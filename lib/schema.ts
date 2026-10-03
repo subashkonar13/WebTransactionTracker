@@ -13,6 +13,16 @@ export const users = sqliteTable("users", {
     .notNull()
     .$defaultFn(() => new Date()),
   lastSyncAt: integer("last_sync_at", { mode: "timestamp_ms" }),
+
+  // --- Resumable backfill state ---
+  // A full-year sync can exceed Vercel's 60s function timeout, so we page
+  // through Gmail across multiple "Sync" clicks. syncCursor holds the Gmail
+  // nextPageToken to resume from; syncInProgress + syncQuery pin down what
+  // search is being paged through so a resume uses the exact same query even
+  // if "today" has since rolled over to a new day.
+  syncCursor: text("sync_cursor"),
+  syncInProgress: integer("sync_in_progress", { mode: "boolean" }).notNull().default(false),
+  syncQuery: text("sync_query"),
 });
 
 /**
@@ -21,9 +31,9 @@ export const users = sqliteTable("users", {
  * sourceHash is SHA-256(userId + gmailMessageId) — unique per (user, email).
  * Re-syncing the same inbox will IGNORE on conflict, so we never double-count.
  *
- * All amounts in paise (integer) to avoid floating-point drift. Divide by 100
- * for display. Negative values would be refunds in a signed model; we instead
- * use txnType to classify so the amount is always a positive magnitude.
+ * All amounts in rupees (not paise) as a float, 2 decimal places. txnType
+ * classifies DEBIT vs CREDIT/PAYMENT so the amount itself stays a positive
+ * magnitude rather than relying on sign.
  */
 export const transactions = sqliteTable(
   "transactions",
@@ -36,7 +46,7 @@ export const transactions = sqliteTable(
     gmailMessageId: text("gmail_message_id").notNull(),
     bankName: text("bank_name"),
     cardLast4: text("card_last4").notNull(),
-    amount: real("amount").notNull(),         // in rupees, 2 decimal places
+    amount: real("amount").notNull(),
     currency: text("currency").notNull().default("INR"),
     merchant: text("merchant"),
     txnType: text("txn_type", { enum: ["DEBIT", "CREDIT", "PAYMENT", "UNKNOWN"] }).notNull(),
