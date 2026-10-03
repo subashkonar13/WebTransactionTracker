@@ -49,7 +49,7 @@ export function buildSearchQuery(sinceEpochSec: number | null): string {
     "credit_cards@icicibank.com",
     "alerts@axisbank.com",
     "cc.statements@axisbank.com",
-    "creditcard.estatements@indusind.com',
+    "creditcard.estatements@indusind.com",
     "Emailstatements.cards@hdfcbank.bank.in",
     "cc.statements@axis.bank.in"
   ];
