@@ -55,7 +55,43 @@ const CARD_RE =
 
 const CARD_MASK_RE = /(?:x{2,}|\*{2,})\s*([0-9]{4})\b/i;
 
-const MERCHANT_RE = /\bat\s+([A-Za-z0-9&.\-_* ]{2,40}?)(?=\s+on\b|\s+info\b|\s+ref\b|[.,;]|$)/i;
+/**
+ * Merchant extraction tries several phrasings, in order, first match wins.
+ * SMS tends to be one prose sentence ("...at AMAZON on 12-01..."); email
+ * alerts are often a structured card/table ("Merchant Name: AMAZON") with
+ * no connecting prose at all. We cover both.
+ *
+ * All patterns are run against a whitespace-FLATTENED copy of the text (see
+ * parseEmail) so that HTML-induced line breaks between a label and its value
+ * — which happens routinely once a <table>/<td> layout gets stripped to
+ * plain text — don't prevent a match. `.` in JS regex does not cross "\n"
+ * without the /s flag, so flattening is cheaper and safer than adding /s to
+ * every pattern here.
+ */
+const MERCHANT_PATTERNS: RegExp[] = [
+  // "...at AMAZON on 12-01..." / "...at AMAZON, Info:..."
+  /\bat\s+([A-Za-z0-9&.\-_*,' ]{2,60}?)(?=\s+on\b|\s+info\b|\s+ref\b|[.,;]|$)/i,
+  // "...paid to AMAZON on..." / "...transferred to AMAZON..."
+  /\b(?:paid|transferred|sent)\s+to\s+([A-Za-z0-9&.\-_*,' ]{2,60}?)(?=\s+on\b|\s+info\b|\s+ref\b|[.,;]|$)/i,
+  // Structured label: "Merchant Name: AMAZON", "Merchant: AMAZON", "Payee Name - AMAZON"
+  /\b(?:merchant(?:\s+name)?|payee(?:\s+name)?)\s*[:\-]\s*([A-Za-z0-9&.\-_*,' ]{2,60}?)(?=\s{2,}|[.,;\n]|$)/i,
+  // "...towards AMAZON..."
+  /\btowards\s+([A-Za-z0-9&.\-_*,' ]{2,60}?)(?=\s+on\b|\s+info\b|\s+ref\b|[.,;]|$)/i,
+];
+
+function extractMerchant(flatText: string): string | null {
+  for (const re of MERCHANT_PATTERNS) {
+    const m = flatText.match(re);
+    if (m && m[1]) {
+      const cleaned = cleanMerchant(m[1]);
+      // Reject obviously-wrong captures (bank's own name, generic words).
+      if (cleaned.length >= 2 && !/^(the|your|is|was|for|rs|inr)$/i.test(cleaned)) {
+        return cleaned;
+      }
+    }
+  }
+  return null;
+}
 
 const BANK_SIGNATURES: Record<string, string[]> = {
   HDFC: ["hdfc"],
@@ -87,22 +123,27 @@ export function parseEmail(rawText: string): ParsedTxn | null {
   const text = truncateReplyChain(rawText).trim();
   if (text.length < 15) return null;
 
-  const lower = text.toLowerCase();
+  // Flatten ALL whitespace (including newlines from HTML <br>/<td> stripping)
+  // to single spaces before running any extraction regex. Bank email alerts
+  // are frequently rendered as a label/value table; once stripped to plain
+  // text, "Merchant Name" and its value can end up on separate lines, which
+  // would otherwise silently break a match since `.` doesn't cross "\n".
+  const flat = text.replace(/\s+/g, " ");
+  const lower = flat.toLowerCase();
 
   if (NOISE_PHRASES.some((p) => lower.includes(p))) return null;
   if (!TXN_KEYWORDS.some((k) => lower.includes(k))) return null;
 
-  const amountMatch = text.match(AMOUNT_RE);
+  const amountMatch = flat.match(AMOUNT_RE);
   if (!amountMatch) return null;
   const amount = parseFloat(amountMatch[1].replace(/,/g, ""));
   if (!isFinite(amount) || amount <= 0) return null;
 
-  const cardMatch = text.match(CARD_RE) ?? text.match(CARD_MASK_RE);
+  const cardMatch = flat.match(CARD_RE) ?? flat.match(CARD_MASK_RE);
   if (!cardMatch) return null;
   const cardLast4 = cardMatch[1];
 
-  const merchantMatch = text.match(MERCHANT_RE);
-  const merchant = merchantMatch ? cleanMerchant(merchantMatch[1]) : null;
+  const merchant = extractMerchant(flat);
 
   const bankName = detectBank(lower);
   const txnType = classify(lower);
