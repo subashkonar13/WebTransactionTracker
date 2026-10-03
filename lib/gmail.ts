@@ -28,11 +28,15 @@ export interface GmailMessage {
 
 /**
  * The search query that finds credit-card alerts.
- * Scoped to the most common bank sender domains + transaction subject terms.
  *
- * Why not just `from:bank`? Because banks also send statements, offers, OTPs
- * from the same addresses — we rely on the parser to filter those out, but
- * narrowing by subject makes the sync much cheaper (fewer messages fetched).
+ * IMPORTANT: we match on bank-name FRAGMENTS in the From header, not exact
+ * sender addresses. Indian banks send from a shifting set of subdomains —
+ * e.g. ICICI alone has been seen sending from both "credit_cards@icici.bank.in"
+ * and "cc.statements@icicibank.com". Gmail's `from:` operator does substring
+ * matching, so `from:icici` catches any address containing that fragment,
+ * regardless of the exact domain. This trades a little precision for a lot
+ * more recall — the parser's noise filter (OTPs, statements, promos) still
+ * does the real precision work on the body text afterwards.
  *
  * `sinceEpochSec`:
  *   - a number  → `after:<epoch>` (exact cutoff — used for "from Jan 1, 2026"
@@ -40,21 +44,28 @@ export interface GmailMessage {
  *   - null      → `newer_than:30d` (fallback when no cutoff is specified)
  */
 export function buildSearchQuery(sinceEpochSec: number | null): string {
-  const senders = [
-    "alerts@hdfcbank.net",
-    "creditcardstatement@mail.hsbc.co.in",
-    "alerts@hdfcbank.com",
-    "credit_cards@hdfcbank.net",
-    "cc.statements@icicibank.com",
-    "credit_cards@icicibank.com",
-    "alerts@axisbank.com",
-    "cc.statements@axisbank.com",
-    "creditcard.estatements@indusind.com",
-    "Emailstatements.cards@hdfcbank.bank.in",
-    "cc.statements@axis.bank.in"
+  const bankFragments = [
+    "hdfcbank",
+    "hdfc",
+    "icicibank",
+    "icici",
+    "sbicard",
+    "sbi",
+    "axisbank",
+    "axis",
+    "kotak",
+    "americanexpress",
+    "amex",
+    "rblbank",
+    "rbl",
+    "idfcfirstbank",
+    "idfc",
+    "yesbank",
+    "citibank",
+    "indusind",
   ];
-  const fromClause = `from:(${senders.join(" OR ")})`;
-  const subjectHints = `subject:(spent OR debited OR charged OR transaction OR purchase OR txn OR using OR credited OR refund OR reversed)`;
+  const fromClause = `from:(${bankFragments.join(" OR ")})`;
+  const subjectHints = `subject:(spent OR debited OR charged OR transaction OR purchase OR txn OR using OR credited OR refund OR reversed OR alert)`;
   const timeClause = sinceEpochSec ? `after:${sinceEpochSec}` : `newer_than:30d`;
   return `${fromClause} ${subjectHints} ${timeClause}`;
 }
