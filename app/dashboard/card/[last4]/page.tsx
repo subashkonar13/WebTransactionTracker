@@ -88,25 +88,41 @@ export default async function CardDetail({
         ) : (
           <ul className="divide-y divide-slate-200 bg-white rounded-xl border border-slate-200">
             {txns.map((t) => (
-              <li key={t.id} className="px-5 py-4 flex items-start justify-between gap-4">
-                <div className="min-w-0">
-                  <p className="font-medium text-slate-900 truncate">
-                    {t.merchant ?? "Unknown merchant"}
-                  </p>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    {formatDateTime(t.timestamp.getTime())}
-                    {t.bankName && <> · {t.bankName}</>}
+              <li key={t.id} className="px-5 py-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <p className="font-medium text-slate-900 truncate">
+                      {t.merchant ?? "Unknown merchant"}
+                    </p>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      {formatDateTime(t.timestamp.getTime())}
+                      {t.bankName && <> · {t.bankName}</>}
+                    </p>
+                  </div>
+                  <p
+                    className={
+                      "tabular-nums font-semibold whitespace-nowrap " +
+                      (t.txnType === "DEBIT" ? "text-slate-900" : "text-emerald-700")
+                    }
+                  >
+                    {t.txnType === "DEBIT" ? "" : "+ "}
+                    {formatINR(t.amount, true)}
                   </p>
                 </div>
-                <p
-                  className={
-                    "tabular-nums font-semibold whitespace-nowrap " +
-                    (t.txnType === "DEBIT" ? "text-slate-900" : "text-emerald-700")
-                  }
-                >
-                  {t.txnType === "DEBIT" ? "" : "+ "}
-                  {formatINR(t.amount, true)}
-                </p>
+                {/* Collapsed by default. Open this if merchant extraction
+                    misses or looks wrong — the raw text underneath shows
+                    exactly what the parser saw, useful for reporting a
+                    format it doesn't yet handle. */}
+                {t.rawSnippet && (
+                  <details className="mt-2">
+                    <summary className="text-xs text-slate-400 cursor-pointer select-none hover:text-slate-600">
+                      View raw email text
+                    </summary>
+                    <pre className="mt-2 text-xs text-slate-600 bg-slate-50 rounded-md p-3 whitespace-pre-wrap break-words">
+                      {t.rawSnippet}
+                    </pre>
+                  </details>
+                )}
               </li>
             ))}
           </ul>
