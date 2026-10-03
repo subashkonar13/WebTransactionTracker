@@ -33,26 +33,35 @@ export interface GmailMessage {
  * Why not just `from:bank`? Because banks also send statements, offers, OTPs
  * from the same addresses — we rely on the parser to filter those out, but
  * narrowing by subject makes the sync much cheaper (fewer messages fetched).
+ *
+ * `sinceEpochSec`:
+ *   - a number  → `after:<epoch>` (exact cutoff — used for "from Jan 1, 2026"
+ *                 backfills and incremental syncs anchored to lastSyncAt)
+ *   - null      → `newer_than:30d` (fallback when no cutoff is specified)
  */
 export function buildSearchQuery(sinceEpochSec: number | null): string {
   const senders = [
     "alerts@hdfcbank.net",
+    "creditcardstatement@mail.hsbc.co.in",
     "alerts@hdfcbank.com",
     "credit_cards@hdfcbank.net",
-    "no-reply@sbicard.com",
-    "sbicard.alerts@sbicard.com",
     "cc.statements@icicibank.com",
     "credit_cards@icicibank.com",
     "alerts@axisbank.com",
     "cc.statements@axisbank.com",
-    "cc.email@kotak.com",
-    "customercare@amexindia.com",
-    "noreply@rblbank.com",
+    "creditcard.estatements@indusind.com',
+    "Emailstatements.cards@hdfcbank.bank.in",
+    "cc.statements@axis.bank.in"
   ];
   const fromClause = `from:(${senders.join(" OR ")})`;
   const subjectHints = `subject:(spent OR debited OR charged OR transaction OR purchase OR txn OR using OR credited OR refund OR reversed)`;
   const timeClause = sinceEpochSec ? `after:${sinceEpochSec}` : `newer_than:30d`;
   return `${fromClause} ${subjectHints} ${timeClause}`;
+}
+
+/** Epoch seconds for Jan 1 of the given year, UTC midnight. */
+export function startOfYearEpochSec(year: number): number {
+  return Math.floor(Date.UTC(year, 0, 1, 0, 0, 0) / 1000);
 }
 
 export async function listMessages(
