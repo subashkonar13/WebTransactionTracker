@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { signIn } from "next-auth/react";
 
 type Status =
   | { kind: "idle" }
@@ -32,6 +33,10 @@ export default function SyncButton() {
         const data = await res.json();
 
         if (!res.ok) {
+          if (data.error === "please_sign_in_again") {
+            await signIn("google", { redirectTo: "/dashboard" });
+            return;
+          }
           setStatus({ kind: "err", message: data.error ?? "sync failed" });
           return;
         }
