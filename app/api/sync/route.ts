@@ -176,6 +176,9 @@ export async function POST() {
     }
   } catch (err) {
     console.error("sync: fatal", err);
+    if ((err as Error).message.includes("insufficient authentication scopes")) {
+      return NextResponse.json({ error: "please_sign_in_again" }, { status: 401 });
+    }
     return NextResponse.json(
       { error: "sync_failed", detail: (err as Error).message },
       { status: 500 }
